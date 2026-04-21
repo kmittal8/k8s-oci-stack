@@ -4,7 +4,9 @@ exec > >(tee /var/log/k8s-master-init.log) 2>&1
 
 echo "=== [$(date)] Starting Kubernetes Master Node Setup ==="
 
-# --- 1. Allow intra-cluster traffic (OCI Ubuntu image has a REJECT rule by default) ---
+# --- 1. Fix OCI/Ubuntu default FORWARD REJECT rule that blocks pod networking ---
+iptables -D FORWARD -j REJECT --reject-with icmp-host-prohibited 2>/dev/null || true
+iptables -P FORWARD ACCEPT
 iptables -I INPUT -s 192.168.0.0/16 -j ACCEPT
 
 # --- 2. Disable swap (required by kubelet) ---
@@ -24,6 +26,8 @@ cat > /etc/sysctl.d/k8s.conf <<EOF
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward                 = 1
+net.ipv4.conf.all.rp_filter         = 0
+net.ipv4.conf.default.rp_filter     = 0
 EOF
 sysctl --system
 
@@ -56,6 +60,8 @@ dpkg --configure -a
 # --- 4. Install CRI-O v1.32 container runtime ---
 CRIO_VERSION=v1.32
 apt-get update -y
+DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
+netfilter-persistent save
 apt-get install -y apt-transport-https ca-certificates curl gpg
 
 mkdir -p /etc/apt/keyrings
